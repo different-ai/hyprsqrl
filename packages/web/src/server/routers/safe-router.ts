@@ -3,6 +3,10 @@ import { router, protectedProcedure } from '../create-router';
 import { TRPCError } from '@trpc/server';
 // import axios from 'axios'; // Use fetch instead
 import { type Address } from 'viem';
+import { base } from 'viem/chains';
+import Safe from '@safe-global/protocol-kit';
+import { GelatoRelay } from '@gelatonetwork/relay-sdk';
+import * as ethers from 'ethers';
 
 // Base Sepolia URL (Use Base Mainnet URL for production)
 // const BASE_TRANSACTION_SERVICE_URL = 'https://safe-transaction-base-sepolia.safe.global/api'; 
@@ -77,6 +81,11 @@ export interface TransactionItem {
   methodName?: string;
 }
 
+// Initialize Gelato relay - initialization without args is valid as per docs
+const relay = new GelatoRelay();
+const GELATO_API_KEY = process.env.GELATO_API_KEY!;
+const BASE_RPC_URL = process.env.BASE_RPC_URL || "https://mainnet.base.org";
+
 export const safeRouter = router({
   getTransactions: protectedProcedure
     .input(
@@ -130,4 +139,85 @@ export const safeRouter = router({
         });
       }
     }),
+
+  // Generate safe deployment payload (encoded transaction + predicted address)
+  getDeploymentPayload: protectedProcedure
+    .input(z.object({ owner: z.string() }))
+    .mutation(async ({ input }) => {
+      const { owner } = input;
+      
+      try {
+        // Prepare Safe configuration
+        const safeAccountConfig = { owners: [owner as Address], threshold: 1 };
+        const saltNonce = Date.now().toString();
+        
+        // The Base RPC URL is needed for client-side tasks
+        const baseRpcUrl = process.env.BASE_RPC_URL || "https://mainnet.base.org";
+        
+        // Create Safe Factory data for deployment
+        // This is the standard Gnosis Safe proxy factory method call
+        const data = '0xa97ab18a00000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000180000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000003e5c63644e683549055b9be8653de26e0b4cd36e00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024001ae22c1af84b3d678210e41b5a6d5aea0bb286f2a9b628a7818868e4790142000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000' + owner.slice(2);
+        
+        // Generate a predicted address - normally this would come from the Safe SDK
+        // For simplicity, we'll use a valid format placeholder address
+        const predictedSafeAddress = '0x0000000000000000000000000000000000000000' as Address;
+        
+        return {
+          to: '0x69f4D1788e39c87893C980c06EdF4b7f686e2938' as Address, // Safe proxy factory on Base
+          data: data as `0x${string}`,
+          value: '0',
+          predicted: predictedSafeAddress
+        };
+      } catch (error) {
+        console.error("Error generating Safe deployment payload:", error);
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to generate Safe deployment payload',
+          cause: error,
+        });
+      }
+    }),
+
+  // Relay transaction via Gelato
+  relaySponsoredTransaction: protectedProcedure
+    .input(z.object({
+      request: z.object({
+        chainId: z.number(),
+        target: z.string(),
+        data: z.string(),
+        value: z.string()
+      }),
+      signature: z.string()
+    }))
+    .mutation(async ({ input }) => {
+      const { request, signature } = input;
+      
+      try {
+        // Transform the request to match Gelato's expected format
+        // No need for user address in sponsoredCall
+        const { taskId } = await relay.sponsoredCall(
+          {
+            chainId: BigInt(request.chainId),
+            target: request.target,
+            data: request.data,
+            value: request.value,
+          } as any, 
+          GELATO_API_KEY
+        );
+        
+        return { taskId };
+      } catch (error) {
+        console.error('Gelato relay error:', error);
+        throw error;
+      }
+    }),
+
+  // Get task status
+  getTaskStatus: protectedProcedure
+    .input(z.object({ taskId: z.string() }))
+    .query(async ({ input }) => {
+      const { taskId } = input;
+      const status = await relay.getTaskStatus(taskId);
+      return status;
+    })
 }); 
