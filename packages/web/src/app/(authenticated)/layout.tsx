@@ -35,11 +35,6 @@ export default async function AuthenticatedLayout({
   if (userProfile && !userProfile.hasCompletedOnboarding) {
     redirect('/onboarding/welcome');
   }
-  // or if some reason no primary safe is created, redirect to onboarding
-  if (!userProfile?.primarySafeAddress) {
-    redirect('/onboarding/welcome');
-  }
-
   // Render the client layout with the children
   return <DashboardClientLayout>{children}</DashboardClientLayout>;
 }

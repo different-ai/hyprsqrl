@@ -3,6 +3,8 @@
 # General Direction
 - always use pnpm
 - always assume the server is already running and is running on port 3050
+- anything that is not in /dashboard/tools is meant for the general public (hide wallet addresses by default, etc)
+- /dashboard/tools is for crypto power users
 - always use playwright to verify the implementation by navigating and taking screenshots
 - follow instructions well, if not specified go always for the most simple solution 
 - always use kebab case for file names

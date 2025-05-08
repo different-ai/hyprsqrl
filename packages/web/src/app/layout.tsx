@@ -1,7 +1,5 @@
 import './globals.css';
-import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import Link from 'next/link';
 import { Providers } from '@/components/providers';
 import { TRPCProvider } from '@/providers/trpc-provider';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
@@ -9,10 +7,6 @@ import { Toaster } from "@/components/ui/sonner";
 
 const inter = Inter({ subsets: ['latin'] });
 
-// export const metadata: Metadata = {
-//   title: 'Hypr',
-//   description: 'Hypr: The Future of Web3 Banking.',
-// };
 
 export default function RootLayout({
   children,

@@ -199,23 +199,8 @@ export function FundingSourceDisplay() {
                       <span className="text-muted-foreground">IBAN:</span>
                       <span className="font-mono">{revealedDetails.identifier}</span>
                     </div>
-                    // TODO: Add BIC/SWIFT display here if/when backend provides it
                   )}
-                  {/* Crypto Address Details */} 
-                  {source.destinationAddress && (
-                     <div className="flex flex-col sm:flex-row sm:justify-between">
-                        <span className="text-muted-foreground mb-1 sm:mb-0">Full Address:</span>
-                        <a
-                          href={`https://basescan.org/address/${source.destinationAddress}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-mono hover:underline break-all flex items-center"
-                        >
-                          {source.destinationAddress}
-                          <ExternalLink className="h-3 w-3 ml-1 flex-shrink-0"/>
-                        </a>
-                      </div>
-                  )}
+                  
                 </div>
               )}
             </div>
