@@ -11,6 +11,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { api } from '@/trpc/react';
+import { toast } from 'sonner';
 
 type OnboardingStepStatus =
   | 'not_started'
@@ -44,6 +45,18 @@ export function OnboardingTasksCard({ initialData }: OnboardingTasksProps) {
       staleTime: 60 * 1000,
       refetchOnWindowFocus: false,
     });
+
+  const utils = api.useUtils();
+  const createAccountsMutation = api.align.createAllVirtualAccounts.useMutation({
+    onSuccess: (data) => {
+      toast.success(data.message || 'Virtual accounts created successfully!');
+      utils.align.getVirtualAccountDetails.invalidate();
+      utils.onboarding.getOnboardingSteps.invalidate();
+    },
+    onError: (error) => {
+      toast.error(`Failed to create accounts: ${error.message}`);
+    },
+  });
 
   if (isLoading) {
     return (
@@ -123,12 +136,18 @@ export function OnboardingTasksCard({ initialData }: OnboardingTasksProps) {
     };
   }
 
+  const handleCreateAccounts = () => {
+    createAccountsMutation.mutate();
+  };
+
   const bankAccountContent = {
-    disabled: !isKycComplete,
+    disabled: !isKycComplete || createAccountsMutation.isPending,
     icon: !isKycComplete ? (
       <Circle className="h-6 w-6 text-gray-400" />
     ) : isBankAccountComplete ? (
       <CheckCircle className="h-6 w-6 text-green-500" />
+    ) : createAccountsMutation.isPending ? (
+      <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
     ) : (
       <Circle className="h-6 w-6 text-gray-400" />
     ),
@@ -137,11 +156,18 @@ export function OnboardingTasksCard({ initialData }: OnboardingTasksProps) {
       ? 'Complete identity verification to unlock this step.'
       : isBankAccountComplete
         ? 'Your virtual bank account is set up and ready to use.'
-        : 'Set up a virtual bank account to receive fiat payments and automatically convert them to stablecoins.',
+        : "Set up virtual bank accounts to receive both USD (ACH/Wire) and EUR (IBAN) payments that auto-convert to USDC.",
     button:
       isKycComplete && !isBankAccountComplete ? (
-        <Button asChild size="sm">
-          <Link href="/settings/funding-sources/align">Set Up Account</Link>
+        <Button
+          size="sm"
+          onClick={handleCreateAccounts}
+          disabled={createAccountsMutation.isPending || !isKycComplete}
+        >
+          {createAccountsMutation.isPending && (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          )}
+          Set Up Accounts
         </Button>
       ) : null,
   };

@@ -1208,4 +1208,148 @@ export const alignRouter = router({
       }
     }),
 
+  /**
+   * Create both USD and EUR virtual accounts for a user in one go.
+   * This is a simplified flow triggered from the onboarding card.
+   */
+  createAllVirtualAccounts: protectedProcedure.mutation(async ({ ctx }) => {
+    const userFromPrivy = await getUser();
+    const userId = userFromPrivy?.id;
+    if (!userId) {
+      throw new TRPCError({ code: 'UNAUTHORIZED', message: 'User not found' });
+    }
+
+    const logPayload = { procedure: 'createAllVirtualAccounts', userId };
+    ctx.log?.info(logPayload, 'Attempting to create all virtual accounts...');
+
+    // 1. Get user from DB and check prerequisites
+    const user = await db.query.users.findFirst({
+      where: eq(users.privyDid, userId),
+    });
+
+    if (!user) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: 'User not found in database',
+      });
+    }
+    if (!user.alignCustomerId) {
+      throw new TRPCError({
+        code: 'PRECONDITION_FAILED',
+        message: 'User does not have an Align customer ID.',
+      });
+    }
+    if (user.kycStatus !== 'approved') {
+      throw new TRPCError({
+        code: 'PRECONDITION_FAILED',
+        message: 'User KYC is not approved.',
+      });
+    }
+
+    // 2. Get user's primary safe address
+    const primarySafe = await db.query.userSafes.findFirst({
+      where: and(eq(userSafes.userDid, userId), eq(userSafes.safeType, 'primary')),
+    });
+
+    if (!primarySafe?.safeAddress) {
+      throw new TRPCError({
+        code: 'PRECONDITION_FAILED',
+        message: 'Primary safe address not found for the user.',
+      });
+    }
+    const destinationAddress = primarySafe.safeAddress;
+
+    // 3. Define account parameters
+    const commonParams = {
+      destinationToken: 'usdc' as const,
+      destinationNetwork: 'base' as const,
+      destinationAddress: destinationAddress,
+    };
+    const currenciesToCreate: Array<'usd' | 'eur'> = ['usd', 'eur'];
+    const results = [];
+
+    // 4. Loop through currencies and create accounts
+    for (const currency of currenciesToCreate) {
+      try {
+        ctx.log?.info({ ...logPayload, currency }, `Creating ${currency} virtual account...`);
+        const virtualAccount = await alignApi.createVirtualAccount(
+          user.alignCustomerId,
+          {
+            source_currency: currency,
+            destination_token: commonParams.destinationToken,
+            destination_network: commonParams.destinationNetwork,
+            destination_address: commonParams.destinationAddress,
+          },
+        );
+
+        let accountType: 'iban' | 'us_ach' = 'us_ach';
+        if (virtualAccount.deposit_instructions.iban) {
+          accountType = 'iban';
+        }
+
+        const fundingSource = await db
+          .insert(userFundingSources)
+          .values({
+            userPrivyDid: userId,
+            sourceProvider: 'align',
+            alignVirtualAccountIdRef: virtualAccount.id,
+            sourceAccountType: accountType,
+            sourceCurrency: virtualAccount.source_currency,
+            sourceBankName: virtualAccount.deposit_instructions.bank_name,
+            sourceBankAddress: virtualAccount.deposit_instructions.bank_address,
+            sourceBankBeneficiaryName:
+              virtualAccount.deposit_instructions.beneficiary_name ||
+              virtualAccount.deposit_instructions.account_beneficiary_name,
+            sourceBankBeneficiaryAddress:
+              virtualAccount.deposit_instructions.beneficiary_address ||
+              virtualAccount.deposit_instructions.account_beneficiary_address,
+            sourceIban: virtualAccount.deposit_instructions.iban?.iban_number,
+            sourceBicSwift:
+              virtualAccount.deposit_instructions.iban?.bic ||
+              virtualAccount.deposit_instructions.bic?.bic_code,
+            sourceAccountNumber:
+              virtualAccount.deposit_instructions.us?.account_number ||
+              virtualAccount.deposit_instructions.account_number,
+            sourceRoutingNumber:
+              virtualAccount.deposit_instructions.us?.routing_number ||
+              virtualAccount.deposit_instructions.routing_number,
+            sourcePaymentRails: virtualAccount.deposit_instructions.payment_rails,
+            destinationCurrency: commonParams.destinationToken,
+            destinationPaymentRail: commonParams.destinationNetwork,
+            destinationAddress: commonParams.destinationAddress,
+          })
+          .returning();
+        
+        // This update is slightly redundant if both succeed, but it's fine.
+        await db
+          .update(users)
+          .set({ alignVirtualAccountId: virtualAccount.id })
+          .where(eq(users.privyDid, userId));
+
+        results.push({ success: true, currency, accountId: virtualAccount.id });
+        ctx.log?.info({ ...logPayload, currency, result: virtualAccount.id }, `${currency.toUpperCase()} account created successfully.`);
+
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        ctx.log?.error({ ...logPayload, currency, error: errorMessage }, `Failed to create ${currency} virtual account.`);
+        results.push({ success: false, currency, error: errorMessage });
+        // We continue to the next currency even if one fails.
+      }
+    }
+
+    const successfulCreations = results.filter(r => r.success);
+    if (successfulCreations.length === 0) {
+        throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `Failed to create any virtual accounts. Errors: ${results.map(r => `${r.currency}: ${r.error}`).join(', ')}`,
+        });
+    }
+
+    return {
+        success: true,
+        message: `Successfully created ${successfulCreations.length} out of ${currenciesToCreate.length} virtual accounts.`,
+        results,
+    };
+  }),
+
 });
