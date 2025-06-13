@@ -156,6 +156,7 @@ export const userRouter = router({
       z.object({
         primarySafeAddress: z.string().length(42).optional(),
         businessName: z.string().optional(),
+        countryCode: z.string().length(2).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {

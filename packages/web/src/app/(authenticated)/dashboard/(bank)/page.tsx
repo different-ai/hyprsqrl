@@ -7,6 +7,9 @@ import { OnboardingTasksCard } from './components/dashboard/onboarding-tasks-car
 import { TransactionHistoryList } from './components/dashboard/transaction-history-list';
 import { redirect } from 'next/navigation';
 import { FundsDisplay } from './components/dashboard/funds-display';
+import TaxAutopilotWidget from '@/components/dashboard/tax-autopilot-widget';
+import { userSafes } from '@/db/schema';
+import { eq, and } from 'drizzle-orm';
 
 // Loading components for Suspense boundaries
 function LoadingCard() {
@@ -64,6 +67,25 @@ export default async function DashboardPage() {
     return <FundsDisplay totalBalance={data.totalBalance} walletAddress={data.primarySafeAddress} />;
   };
 
+  // Fetch tax safe address (server side)
+  const taxSafeRow = await db
+    .select()
+    .from(userSafes)
+    .where(and(eq(userSafes.userDid, userId), eq(userSafes.safeType, 'tax')))
+    .limit(1);
+
+  const taxSafeAddress = taxSafeRow[0]?.safeAddress as `0x${string}` | undefined;
+
+  const usdcAddress = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as `0x${string}`; // placeholder mainnet
+
+  const TaxWidget = () => (
+    <TaxAutopilotWidget
+      safeAddress={taxSafeAddress}
+      taxVaultAddress={taxSafeAddress}
+      tokenAddress={usdcAddress}
+    />
+  );
+
   return (
     <div className="">
       <div className="space-y-6">
@@ -73,6 +95,10 @@ export default async function DashboardPage() {
 
         <Suspense fallback={<LoadingCard />}>
           <FundsData />
+        </Suspense>
+
+        <Suspense fallback={<LoadingCard />}>
+          <TaxWidget />
         </Suspense>
 
         <Suspense fallback={<LoadingCard />}>
@@ -86,3 +112,5 @@ export default async function DashboardPage() {
     </div>
   );
 }
+
+export const dynamic = 'force-dynamic';

@@ -14,6 +14,7 @@ import { actionLedgerRouter } from './action-ledger';
 import { inboxCardsRouter } from './inbox-cards-router';
 import { dashboardRouter } from './dashboard-router';
 import { waitlistRouter } from './waitlist-router';
+import { taxRouter } from './tax-router';
 
 /**
  * This is the primary router for your server.
@@ -40,6 +41,7 @@ export const appRouter = router({
   actionLedger: actionLedgerRouter,
   dashboard: dashboardRouter,
   waitlist: waitlistRouter,
+  tax: taxRouter,
 });
 
 // Export type definition of API

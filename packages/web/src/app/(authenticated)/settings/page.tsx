@@ -93,6 +93,27 @@ export default function SettingsPage() {
             </Button>
           </CardFooter>
         </Card>
+
+        {/* Residence Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Landmark className="h-5 w-5" />
+              <span>Tax Residence</span>
+            </CardTitle>
+            <CardDescription>Set your country of tax residence</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-600 mb-4">
+              Your residence determines withholding rates for Tax Autopilot.
+            </p>
+          </CardContent>
+          <CardFooter>
+            <Button variant="outline" className="w-full" asChild>
+              <Link href="/settings/residence">Set Residence</Link>
+            </Button>
+          </CardFooter>
+        </Card>
       </div>
     </div>
   );

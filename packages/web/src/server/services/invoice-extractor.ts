@@ -2,6 +2,7 @@ import type { SimplifiedEmail } from './gmail-service';
 import { processDocumentFromEmailText, type AiProcessedDocument } from './ai-service';
 import { useInboxStore } from '@/lib/store'; // To update the card in the store
 import type { InboxCard } from '@/types/inbox'; // Assuming this now correctly includes parsedInvoiceData, logId, sourceType
+import { ingestInvoice } from '@/lib/tax-autopilot/invoice-ingestion';
 
 /**
  * Processes a single simplified email, extracts invoice data using AI,
@@ -38,11 +39,23 @@ export async function processEmailAndExtractInvoice(
             parsedInvoiceData: extractedData,
             confidence: extractedData.confidence, 
             title: extractedData.invoiceNumber ? `Invoice ${extractedData.invoiceNumber}` : cardToUpdate.title,
-        } as Partial<InboxCard>); // Cast to Partial<InboxCard> to satisfy linter for potentially new fields
+        } as Partial<InboxCard>);
         console.log(`[InvoiceExtractor] Updated InboxCard ID: ${cardToUpdate.id} with extracted data.`);
-      } else {
-        console.warn(`[InvoiceExtractor] Could not find InboxCard with logId: ${email.id} to update.`);
       }
+
+      // Kick off ingestion → ledger
+      try {
+        await ingestInvoice({
+          userDid: (email as any).userPrivyDid ?? 'unknown-user',
+          rawContent: emailContent,
+          source: 'email',
+          relatedInvoiceId: extractedData.invoiceNumber ?? undefined,
+        });
+        console.log('[InvoiceExtractor] Ledger event recorded via ingestInvoice');
+      } catch (err) {
+        console.error('[InvoiceExtractor] Error ingesting invoice:', err);
+      }
+
       return extractedData;
     } else if (extractedData) {
       console.log(`[InvoiceExtractor] Extraction confidence (${extractedData.confidence}) for email ID: ${email.id} too low or data unsuitable. Card confidence updated.`);

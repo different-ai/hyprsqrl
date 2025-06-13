@@ -42,6 +42,7 @@ export const userProfilesTable = pgTable("user_profiles", {
   primarySafeAddress: varchar("primary_safe_address", { length: 42 }),
   businessName: varchar("business_name", { length: 255 }),
   email: varchar("email", { length: 255 }),
+  countryCode: varchar("country_code", { length: 2 }),
   defaultWalletId: uuid("default_wallet_id").references(() => userWalletsTable.id),
   skippedOrCompletedOnboardingStepper: boolean("skipped_or_completed_onboarding_stepper").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -713,3 +714,63 @@ export const oauthStates = pgTable('oauth_states', {
     providerIdx: index('oauth_states_provider_idx').on(table.provider),
   };
 });
+
+// --- LEDGER EVENTS (immutable financial event stream) -------------------------
+export const ledgerEvents = pgTable(
+  "ledger_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // The user this event belongs to (owner of the ledger)
+    userDid: text("user_did")
+      .notNull()
+      .references(() => users.privyDid, { onDelete: "cascade" }),
+
+    // Event classification
+    eventType: text("event_type", {
+      enum: [
+        "income",
+        "tax_hold",
+        "tax_release",
+        "expense",
+        "transfer",
+      ],
+    }).notNull(),
+
+    // Monetary values are stored as text to avoid JS bigint/json rounding issues.
+    amount: text("amount").notNull(),
+    currency: text("currency").notNull(),
+
+    // Optional reference to an invoice stored elsewhere (e.g. user_requests)
+    relatedInvoiceId: text("related_invoice_id"),
+
+    // Source system indicator – email, request_network, manual, bank_feed, etc.
+    source: text("source"),
+
+    // Free-form JSON metadata with extra context (parsed invoice, tx hash …)
+    metadata: jsonb("metadata"),
+
+    // Timestamps
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => {
+    return {
+      userIdx: index("ledger_events_user_idx").on(table.userDid),
+      typeIdx: index("ledger_events_type_idx").on(table.eventType),
+      createdIdx: index("ledger_events_created_idx").on(table.createdAt),
+    };
+  },
+);
+
+// Relation: a ledger event belongs to one user
+export const ledgerEventsRelations = relations(ledgerEvents, ({ one }) => ({
+  user: one(users, {
+    fields: [ledgerEvents.userDid],
+    references: [users.privyDid],
+  }),
+}));
+
+// Type inference for ledger events
+export type LedgerEvent = typeof ledgerEvents.$inferSelect;
+export type NewLedgerEvent = typeof ledgerEvents.$inferInsert;
